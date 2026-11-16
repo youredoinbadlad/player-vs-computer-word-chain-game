@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>영어 끝말잇기</title>
+<meta name="description" content="컴퓨터와 번갈아 영어 단어를 이어 가는 끝말잇기. 단어 뜻도 함께 배워요.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Noto+Sans+KR:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#EEF1F8; --surface:#fff; --ink:#18213F; --muted:#586284; --line:#D3D9EA;
+  --cobalt:#2E4BD8; --sun:#FFC83D; --sun-edge:#C98F00; --err:#C0303F;
+  --latin:"Fredoka","Segoe UI",system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);line-height:1.6;font-size:16px;
+  font-family:"Noto Sans KR",system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif}
+.wrap{max-width:640px;margin:0 auto;padding:0 20px}
+button,input{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--cobalt);outline-offset:2px}
+
+/* ----- 체인(단어 목록) ----- */
+.chain{list-style:none;margin:0;padding:0 0 0 30px;position:relative}
+.chain::before{content:"";position:absolute;left:11px;top:14px;bottom:14px;width:3px;border-radius:2px;background:var(--line)}
+.entry{position:relative;padding:10px 0 12px;scroll-margin-bottom:150px}
+.entry::before{content:"";position:absolute;left:-26px;top:20px;width:13px;height:13px;border-radius:50%;
+  background:var(--bg);border:3px solid var(--cobalt)}
+.entry.player::before{border-color:var(--sun-edge)}
+.head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.word{display:inline-flex;align-items:center;gap:3px;font-family:var(--latin);font-weight:600;font-size:1.5rem;line-height:1}
+.mid{letter-spacing:.03em}
+.tile{display:inline-grid;place-items:center;width:1.55em;height:1.55em;border-radius:8px;
+  background:var(--cobalt);color:#fff;font-weight:700}
+.player .tile{background:var(--sun);color:var(--ink)}
+.who{font-size:.85rem;color:var(--muted)}
+.mean{margin:6px 0 0;color:var(--muted);font-size:.95rem;max-width:62ch;line-height:1.55}
+@media (prefers-reduced-motion:no-preference){
+  .entry.new .word{animation:snap .28s ease-out}
+  @keyframes snap{from{transform:translateX(-10px);opacity:0}to{transform:none;opacity:1}}
+}
+
+/* ----- 시작 화면 ----- */
+#start{padding:44px 0 56px}
+h1{margin:0;font-size:2.1rem;font-weight:800;letter-spacing:-.02em;line-height:1.25}
+.lede{margin:10px 0 28px;color:var(--muted);max-width:46ch}
+.demo{margin:0 0 34px}
+h2{margin:0;font-size:1.05rem;font-weight:700}
+.rule{margin:6px 0 0;color:var(--muted);font-size:.95rem}
+.levels{display:grid;gap:10px;margin:14px 0 0;padding:0;list-style:none}
+.level{width:100%;display:flex;justify-content:space-between;align-items:center;min-height:54px;padding:12px 18px;
+  border:2px solid var(--line);border-radius:12px;background:var(--surface);font-weight:700;cursor:pointer;text-align:left}
+.level:hover{border-color:var(--cobalt)}
+.level .count{color:var(--muted);font-weight:500}
+.level:disabled{opacity:.6;cursor:wait}
+#start-msg{min-height:1.6em;margin:12px 0 0;color:var(--err);font-weight:500}
+
+/* ----- 게임 화면 ----- */
+.hud{position:sticky;top:0;z-index:5;background:var(--bg);padding:14px 0 12px;border-bottom:1px solid var(--line)}
+.hud-row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.progress{font-weight:700}
+.progress small{font-weight:500;color:var(--muted)}
+.hearts{display:flex;gap:3px;color:var(--err);font-size:1.3rem;line-height:1}
+.hearts .lost{color:var(--line)}
+.ghost{border:2px solid var(--line);background:transparent;border-radius:10px;padding:4px 12px;min-height:36px;font-size:.9rem;font-weight:500;cursor:pointer}
+.ghost:hover{border-color:var(--ink)}
+.bar{height:8px;background:var(--line);border-radius:99px;margin-top:10px;overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--cobalt);transition:width .3s}
+#log{padding-top:14px;min-height:40vh}
+
+.dock{position:sticky;bottom:0;z-index:5;background:var(--bg);border-top:1px solid var(--line);
+  padding:10px 0 calc(14px + env(safe-area-inset-bottom,0px))}
+.msg{min-height:1.6em;margin:0 0 8px;font-size:.95rem;color:var(--muted)}
+.msg.err{color:var(--err);font-weight:700}
+.row{display:flex;gap:8px}
+.need{flex:none;display:grid;place-items:center;width:54px;height:54px;border-radius:10px;background:var(--cobalt);color:#fff;
+  font-family:var(--latin);font-weight:700;font-size:1.7rem}
+#word{flex:1;min-width:0;height:54px;padding:0 14px;border:2px solid var(--line);border-radius:10px;background:var(--surface);
+  font-family:var(--latin);font-weight:500;font-size:1.2rem}
+#word:focus{border-color:var(--cobalt);outline:none}
+.send{flex:none;height:54px;padding:0 20px;border:0;border-radius:10px;background:var(--ink);color:#fff;font-weight:700;cursor:pointer}
+.send:disabled,#word:disabled{opacity:.6;cursor:wait}
+
+/* ----- 결과 ----- */
+.end{background:var(--surface);border:2px solid var(--line);border-radius:16px;padding:20px;margin:6px 0 24px}
+.end h2{font-size:1.3rem}
+.end p{margin:6px 0 0;color:var(--muted)}
+.stat{margin-top:14px;font-weight:700}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 18px;padding:0;list-style:none}
+.chips li{background:var(--bg);border-radius:6px;padding:2px 10px;font-family:var(--latin);font-weight:500}
+.ask{margin:0 0 12px;color:var(--ink)}
+kbd{font-family:var(--latin);font-weight:700;background:var(--bg);border:2px solid var(--line);border-radius:6px;padding:0 7px}
+.choices{display:flex;gap:10px;align-items:center}
+.bye{font-weight:700;color:var(--ink)}
+.again{height:50px;padding:0 24px;border:0;border-radius:10px;background:var(--cobalt);color:#fff;font-weight:700;cursor:pointer}
+</style>
+</head>
+<body>
+
+<main class="wrap">
+
+  <!-- 시작 화면 -->
+  <section id="start">
+    <h1>영어 끝말잇기</h1>
+    <p class="lede">컴퓨터와 번갈아 영어 단어를 이어 가세요. 앞 단어의 마지막 글자가 다음 단어의 첫 글자가 돼요.</p>
+
+    <ol class="chain demo" id="demo" aria-label="예시 단어 연결"></ol>
+
+    <h2>난이도를 고르세요</h2>
+    <p class="rule">목표 단어 수만큼 이으면 승리해요. 사전에 없는 단어나 시작 글자가 틀리면 기회가 1개씩 줄고, 5번 틀리면 끝나요.</p>
+    <ul class="levels" id="levels"></ul>
+    <p id="start-msg" role="status" aria-live="polite"></p>
+  </section>
+
+  <!-- 게임 화면 -->
+  <section id="game" hidden>
+    <div class="hud">
+      <div class="hud-row">
+        <div class="progress"><span id="prog">0 / 0</span> <small>단어</small></div>
+        <div class="hearts" id="hearts" role="img" aria-label="남은 기회"></div>
+        <button class="ghost" id="quit" type="button">그만하기</button>
+      </div>
+      <div class="bar" aria-hidden="true"><i id="bar"></i></div>
+    </div>
+
+    <ol class="chain" id="log" aria-label="이어진 단어"></ol>
+
+    <section class="end" id="end" hidden>
+      <h2 id="end-title"></h2>
+      <p id="end-sub"></p>
+      <div class="stat" id="end-stat"></div>
+      <ul class="chips" id="end-words"></ul>
+      <p class="ask" id="ask">다시 플레이하시겠습니까? <kbd>Y</kbd> 키를 누르면 재시작, 다른 키를 누르면 종료해요.</p>
+      <div class="choices" id="choices">
+        <button class="again" id="again" type="button">Y 다시 하기</button>
+        <button class="ghost" id="stop" type="button">종료</button>
+      </div>
+      <p class="bye" id="bye" hidden>게임을 이용해 주셔서 감사합니다. 종료합니다!</p>
+      <button class="again" id="reopen" type="button" hidden>새로 시작하기</button>
+    </section>
+
+    <div class="dock" id="dock">
+      <p class="msg" id="msg" role="status" aria-live="polite"></p>
+      <form class="row" id="form" autocomplete="off">
+        <div class="need" id="need" aria-hidden="true">A</div>
+        <input id="word" type="text" maxlength="45" placeholder="영어 단어를 입력하세요"
+               autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="send"
+               aria-label="영어 단어">
+        <button class="send" id="send" type="submit">제출</button>
+      </form>
+    </div>
+  </section>
+
+</main>
+
+<script>
+(() => {
+  const LEVELS = [["1","매우 쉬움",5],["2","쉬움",10],["3","중간",25],["4","어려움",50],["5","매우 어려움",100]];
+  const END = {
+    win_target: ["목표를 달성했어요", s => `${s.target}개 단어를 모두 이었어요. 승리!`],
+    win_stuck:  ["컴퓨터가 이을 단어를 찾지 못했어요", () => "이번 판은 당신의 승리예요."],
+    lose:       ["기회를 모두 썼어요", () => "다음엔 더 오래 이어 보세요."],
+    quit:       ["게임을 마쳤어요", () => "언제든 다시 시작할 수 있어요."]
+  };
+  const $ = id => document.getElementById(id);
+  const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let busy = false, over = false, awaitingReplay = false, replayReadyAt = 0;
+
+  /* ---------- 공통 ---------- */
+  async function api(path, body) {
+    let res;
+    try {
+      res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+    } catch (e) {
+      throw new Error("서버에 연결하지 못했어요. 인터넷 연결을 확인하고 다시 시도해 주세요.");
+    }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || "요청을 처리하지 못했어요. 다시 시도해 주세요.");
+    return data;
+  }
+
+  function tile(ch) {
+    const t = document.createElement("span");
+    t.className = "tile"; t.textContent = ch;
+    return t;
+  }
+
+  function makeEntry(who, word, meaning, animate) {
+    const li = document.createElement("li");
+    li.className = "entry " + who + (animate ? " new" : "");
+    const head = document.createElement("div"); head.className = "head";
+    const w = document.createElement("div"); w.className = "word"; w.setAttribute("aria-label", word);
+    w.append(tile(word[0]));
+    if (word.length > 2) { const m = document.createElement("span"); m.className = "mid"; m.textContent = word.slice(1, -1); w.append(m); }
+    if (word.length > 1) w.append(tile(word[word.length - 1]));
+    const label = document.createElement("span"); label.className = "who"; label.textContent = who === "computer" ? "컴퓨터" : "나";
+    head.append(w, label);
+    li.append(head);
+    if (meaning) { const p = document.createElement("p"); p.className = "mean"; p.textContent = meaning; li.append(p); }
+    return li;
+  }
+
+  function addEntry(who, word, meaning) {
+    const li = makeEntry(who, word, meaning, true);
+    $("log").append(li);
+    li.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "end" });
+  }
+
+  function setMsg(text, kind) {
+    const m = $("msg"); m.textContent = text || ""; m.className = "msg" + (kind ? " " + kind : "");
+  }
+
+  function setState(s) {
+    $("prog").textContent = `${s.correct} / ${s.target}`;
+    $("bar").style.width = Math.min(100, (s.correct / s.target) * 100) + "%";
+    const hearts = $("hearts"); hearts.textContent = "";
+    const left = s.max_wrong - s.wrong;
+    for (let i = 0; i < s.max_wrong; i++) {
+      const h = document.createElement("span");
+      h.textContent = "♥"; if (i >= left) h.className = "lost";
+      hearts.append(h);
+    }
+    hearts.setAttribute("aria-label", `남은 기회 ${left}개`);
+    $("need").textContent = s.next_letter;
+  }
+
+  function setBusy(on, text) {
+    busy = on;
+    $("word").disabled = on; $("send").disabled = on;
+    if (on && text) setMsg(text);
+  }
+
+  /* ---------- 시작 화면 ---------- */
+  [["computer", "apple", "사과"], ["player", "eagle", "독수리"], ["computer", "echo", "메아리"]]
+    .forEach(([who, word, ko]) => $("demo").append(makeEntry(who, word, ko, false)));
+
+  LEVELS.forEach(([key, name, count]) => {
+    const li = document.createElement("li");
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "level";
+    const n = document.createElement("span"); n.textContent = name;
+    const c = document.createElement("span"); c.className = "count"; c.textContent = `${count}단어`;
+    b.append(n, c);
+    b.addEventListener("click", () => startGame(key));
+    li.append(b); $("levels").append(li);
+  });
+
+  async function startGame(level) {
+    const buttons = document.querySelectorAll(".level");
+    buttons.forEach(b => b.disabled = true);
+    $("start-msg").textContent = "게임을 준비하는 중이에요…";
+    try {
+      const d = await api("/api/start", { level });
+      over = false;
+      $("log").textContent = "";
+      $("end").hidden = true; $("dock").hidden = false;
+      $("start").hidden = true; $("game").hidden = false;
+      addEntry("computer", d.word, d.meaning);
+      setState(d.state); setMsg(""); setBusy(false);
+      $("word").value = ""; $("word").focus();
+      $("start-msg").textContent = "";
+      window.scrollTo(0, 0);
+    } catch (e) {
+      $("start-msg").textContent = e.message;
+    } finally {
+      buttons.forEach(b => b.disabled = false);
+    }
+  }
+
+  /* ---------- 게임 진행 ---------- */
+  $("form").addEventListener("submit", async ev => {
+    ev.preventDefault();
+    if (busy || over) return;
+    const word = $("word").value.trim();
+    if (!word) return;
+    setBusy(true, "사전에서 확인하고 컴퓨터가 다음 단어를 찾는 중이에요…");
+    try {
+      const d = await api("/api/submit", { word });
+      setState(d.state);
+      if (d.result === "ok") {
+        $("word").value = ""; setMsg("");
+        addEntry("player", d.word, d.meaning);
+        if (d.computer_word) addEntry("computer", d.computer_word, d.computer_meaning);
+      } else {
+        setMsg(d.msg, "err");
+      }
+      if (d.finished) finish(d.finished, d.words, d.state);
+    } catch (e) {
+      setMsg(e.message, "err");
+    } finally {
+      setBusy(false);
+      if (!over) { $("word").focus(); $("word").select(); }
+    }
+  });
+
+  function finish(reason, words, state) {
+    over = true;
+    const [title, sub] = END[reason] || END.quit;
+    $("end-title").textContent = title;
+    $("end-sub").textContent = sub(state);
+    $("end-stat").textContent = `맞힌 단어 ${state.correct} / ${state.target}개`;
+    const list = $("end-words"); list.textContent = "";
+    (words || []).forEach(w => { const li = document.createElement("li"); li.textContent = w; list.append(li); });
+    $("dock").hidden = true; $("end").hidden = false;
+    $("ask").hidden = false; $("choices").hidden = false;
+    $("bye").hidden = true; $("reopen").hidden = true;
+    awaitingReplay = true; replayReadyAt = Date.now() + 400;  // 마지막 입력 직후의 키 입력은 무시
+    $("end").scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "center" });
+  }
+
+  $("quit").addEventListener("click", async () => {
+    if (over || busy) return;
+    try {
+      const d = await api("/api/quit");
+      finish("quit", d.words, d.state);
+    } catch (e) { setMsg(e.message, "err"); }
+  });
+
+  function restart() {
+    awaitingReplay = false;
+    $("game").hidden = true; $("start").hidden = false;
+    $("start-msg").textContent = "";
+    window.scrollTo(0, 0);
+  }
+
+  function quitGame() {
+    awaitingReplay = false;
+    $("ask").hidden = true; $("choices").hidden = true;
+    $("bye").hidden = false; $("reopen").hidden = false;
+  }
+
+  $("again").addEventListener("click", restart);
+  $("stop").addEventListener("click", quitGame);
+  $("reopen").addEventListener("click", restart);
+
+  // 게임이 끝난 뒤: Y(한글 자판 ㅛ 포함)는 재시작, 그 밖의 키는 종료
+  document.addEventListener("keydown", ev => {
+    if (!awaitingReplay || ev.repeat || Date.now() < replayReadyAt) return;
+    if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
+    if (["Shift", "Control", "Alt", "Meta", "CapsLock", "Tab", "Process", "HangulMode", "Unidentified"].includes(ev.key)) return;
+    ev.preventDefault();
+    if (ev.code === "KeyY" || ev.key.toLowerCase() === "y" || ev.key === "ㅛ") restart();
+    else quitGame();
+  });
+})();
+</script>
+</body>
+</html>
