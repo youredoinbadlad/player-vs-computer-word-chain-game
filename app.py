@@ -30,92 +30,127 @@ DIFFICULTIES = {
 }
 MAX_WRONG = 5            # 최대 허용 틀린 횟수
 START_WORD = "apple"     # 컴퓨터 시작 단어
-MAX_COMPUTER_TRIES = 12  # 컴퓨터가 단어를 찾을 때 사전 조회 최대 횟수
 GAME_TTL = 60 * 60       # 1시간 동안 움직임이 없으면 게임 삭제
 
 
 # ---------------------------------------------------------------- 사전 API
-_WORD_CACHE = {}
-_CACHE_MAX = 5000
-
-
+# 아래 두 함수(get_word_info, find_computer_word)는 원본 콘솔 게임 코드 그대로입니다.
 def get_word_info(word):
     """
     Free Dictionary API를 호출하여 영단어 존재 여부 및 뜻 가져오기
     반환값: (결과_상태_코드, 뜻_또는_메시지)
     - 200: 정상 단어
     - 404: 사전에 없는 단어
-    - 500: API/네트워크 오류 (캐시하지 않음)
+    - 500: API/네트워크 오류
     """
     clean_word = word.strip().lower()
-    if clean_word in _WORD_CACHE:
-        return _WORD_CACHE[clean_word]
-
     url = f"https://api.dictionaryapi.dev/api/v2/entries/en/{clean_word}"
-
+    
     try:
         response = requests.get(url, timeout=5)
-
+        
         if response.status_code == 404:
-            result = (404, "사전에 존재하지 않는 영단어입니다.")
-
-        elif response.status_code == 200:
-            result = (200, "Definition available in English dictionary.")
+            return 404, "사전에 존재하지 않는 영단어입니다."
+            
+        if response.status_code == 200:
             data = response.json()
+            
             if isinstance(data, list) and len(data) > 0:
-                found = False
-                for meaning in data[0].get("meanings", []):
-                    for def_obj in meaning.get("definitions", []):
-                        if "definition" in def_obj:
-                            result = (200, def_obj["definition"])
-                            found = True
-                            break
-                    if found:
-                        break
-        else:
-            return 500, f"HTTP 오류 발생 (코드: {response.status_code})"
-
+                meanings = data[0].get('meanings', [])
+                for meaning in meanings:
+                    definitions = meaning.get('definitions', [])
+                    for def_obj in definitions:
+                        if 'definition' in def_obj:
+                            return 200, def_obj['definition']
+            
+            return 200, "Definition available in English dictionary."
+            
+        return 500, f"HTTP 오류 발생 (코드: {response.status_code})"
+        
     except requests.exceptions.Timeout:
         return 500, "네트워크 요청 시간이 초과되었습니다."
     except Exception as e:
         return 500, f"API 통신 오류: {e}"
 
-    if len(_WORD_CACHE) >= _CACHE_MAX:
-        _WORD_CACHE.clear()
-    _WORD_CACHE[clean_word] = result
-    return result
-
-
 def find_computer_word(start_char, used_words):
     """
     Datamuse API를 이용해 start_char로 시작하는 실제 영단어를 실시간 검색
     """
-    url = f"https://api.datamuse.com/words?sp={start_char.lower()}*&max=200"
+    url = f"https://api.datamuse.com/words?sp={start_char.lower()}*"
     try:
         response = requests.get(url, timeout=5)
         if response.status_code == 200:
-            # 상위(흔한) 단어 위주로 섞어서 너무 어려운 단어가 나오지 않게 한다
-            words_data = response.json()[:80]
+            words_data = response.json()
             random.shuffle(words_data)
-
-            tries = 0
+            
             for item in words_data:
-                word = item["word"].lower()
-                if (
-                    word.isascii()
-                    and word.isalpha()
-                    and len(word) >= 2
-                    and word not in used_words
-                ):
-                    tries += 1
-                    if tries > MAX_COMPUTER_TRIES:
-                        break
+                word = item['word'].lower()
+                if word.isalpha() and len(word) >= 2 and word not in used_words:
                     status, meaning = get_word_info(word)
                     if status == 200:
                         return word, meaning
     except Exception:
         pass
     return None, None
+
+
+# ---------------------------------------------------------------- 웹용 추가 코드
+# 위 원본 함수는 고치지 않고, 같은 이름으로 한 겹 감싸서 아래 기능만 더한다.
+#  - 한 번 확인한 단어는 기억해 둔다(캐시)
+#  - Free Dictionary API가 응답하지 않으면(500) Datamuse로 대신 확인한다
+#  - 한 번 실패하면 60초 동안은 Free Dictionary API를 건너뛰어 기다림을 줄인다
+_original_get_word_info = get_word_info
+_WORD_CACHE = {}
+_CACHE_MAX = 5000
+_PRIMARY_DOWN_UNTIL = 0.0
+PRIMARY_RETRY_SECONDS = 60
+
+
+def _remember(word, result):
+    if len(_WORD_CACHE) >= _CACHE_MAX:
+        _WORD_CACHE.clear()
+    _WORD_CACHE[word] = result
+
+
+def _lookup_datamuse(word):
+    """예비 사전: Datamuse에서 단어와 뜻을 찾는다. 반환값 형식은 get_word_info와 같다."""
+    url = f"https://api.datamuse.com/words?sp={word}&md=d&max=5"
+    try:
+        response = requests.get(url, timeout=5)
+        if response.status_code != 200:
+            return 500, f"HTTP 오류 발생 (코드: {response.status_code})"
+        for item in response.json():
+            if item.get("word", "").lower() == word:
+                for d in item.get("defs", []):
+                    return 200, d.split("\t", 1)[-1]
+                return 200, ""
+        return 404, "사전에 존재하지 않는 영단어입니다."
+    except requests.exceptions.Timeout:
+        return 500, "네트워크 요청 시간이 초과되었습니다."
+    except Exception as e:
+        return 500, f"API 통신 오류: {e}"
+
+
+def get_word_info(word):  # noqa: F811  (원본 함수를 감싸는 웹용 버전)
+    global _PRIMARY_DOWN_UNTIL
+    clean_word = word.strip().lower()
+    if clean_word in _WORD_CACHE:
+        return _WORD_CACHE[clean_word]
+
+    if time.time() >= _PRIMARY_DOWN_UNTIL:
+        status, msg = _original_get_word_info(clean_word)
+        if status in (200, 404):
+            _remember(clean_word, (status, msg))
+            return status, msg
+        app.logger.warning("Free Dictionary API 오류(%s): %s", clean_word, msg)
+        _PRIMARY_DOWN_UNTIL = time.time() + PRIMARY_RETRY_SECONDS
+
+    status, msg = _lookup_datamuse(clean_word)
+    if status == 200:
+        _remember(clean_word, (status, msg))
+    elif status == 500:
+        app.logger.warning("Datamuse 오류(%s): %s", clean_word, msg)
+    return status, msg
 
 
 # ---------------------------------------------------------------- 게임 상태
@@ -287,4 +322,4 @@ def api_quit():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=True)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=
