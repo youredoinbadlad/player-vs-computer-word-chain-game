@@ -50,11 +50,13 @@ h1{margin:0;font-size:2.1rem;font-weight:800;letter-spacing:-.02em;line-height:1
 h2{margin:0;font-size:1.05rem;font-weight:700}
 .rule{margin:6px 0 0;color:var(--muted);font-size:.95rem}
 .levels{display:grid;gap:10px;margin:14px 0 0;padding:0;list-style:none}
-.level{width:100%;display:flex;justify-content:space-between;align-items:center;min-height:54px;padding:12px 18px;
-  border:2px solid var(--line);border-radius:12px;background:var(--surface);font-weight:700;cursor:pointer;text-align:left}
-.level:hover{border-color:var(--cobalt)}
-.level .count{color:var(--muted);font-weight:500}
-.level:disabled{opacity:.6;cursor:wait}
+.level{display:flex;align-items:center;gap:14px;min-height:50px;padding:10px 18px;
+  border:2px solid var(--line);border-radius:12px;background:var(--surface);font-weight:700}
+.level .num{display:grid;place-items:center;flex:none;width:30px;height:30px;border-radius:8px;
+  background:var(--cobalt);color:#fff;font-family:var(--latin);font-weight:700}
+.level .count{margin-left:auto;color:var(--muted);font-weight:500}
+.pick{margin-top:18px}
+.pick label{display:block;margin-bottom:8px;font-weight:700}
 #start-msg{min-height:1.6em;margin:12px 0 0;color:var(--err);font-weight:500}
 
 /* ----- 게임 화면 ----- */
@@ -77,11 +79,11 @@ h2{margin:0;font-size:1.05rem;font-weight:700}
 .row{display:flex;gap:8px}
 .need{flex:none;display:grid;place-items:center;width:54px;height:54px;border-radius:10px;background:var(--cobalt);color:#fff;
   font-family:var(--latin);font-weight:700;font-size:1.7rem}
-#word{flex:1;min-width:0;height:54px;padding:0 14px;border:2px solid var(--line);border-radius:10px;background:var(--surface);
+#word,#level-input{flex:1;min-width:0;height:54px;padding:0 14px;border:2px solid var(--line);border-radius:10px;background:var(--surface);
   font-family:var(--latin);font-weight:500;font-size:1.2rem}
-#word:focus{border-color:var(--cobalt);outline:none}
+#word:focus,#level-input:focus{border-color:var(--cobalt);outline:none}
 .send{flex:none;height:54px;padding:0 20px;border:0;border-radius:10px;background:var(--ink);color:#fff;font-weight:700;cursor:pointer}
-.send:disabled,#word:disabled{opacity:.6;cursor:wait}
+.send:disabled,#word:disabled,#level-input:disabled{opacity:.6;cursor:wait}
 
 /* ----- 결과 ----- */
 .end{background:var(--surface);border:2px solid var(--line);border-radius:16px;padding:20px;margin:6px 0 24px}
@@ -111,6 +113,14 @@ kbd{font-family:var(--latin);font-weight:700;background:var(--bg);border:2px sol
     <h2>난이도를 고르세요</h2>
     <p class="rule">목표 단어 수만큼 이으면 승리해요. 사전에 없는 단어나 시작 글자가 틀리면 기회가 1개씩 줄고, 5번 틀리면 끝나요.</p>
     <ul class="levels" id="levels"></ul>
+    <form class="pick" id="pick" autocomplete="off">
+      <label for="level-input">선택 (1~5 입력)</label>
+      <div class="row">
+        <input id="level-input" type="text" inputmode="numeric" maxlength="1" placeholder="숫자 입력"
+               enterkeyhint="go" aria-label="난이도 번호 1에서 5">
+        <button class="send" id="pick-go" type="submit">시작</button>
+      </div>
+    </form>
     <p id="start-msg" role="status" aria-live="polite"></p>
   </section>
 
@@ -237,19 +247,28 @@ kbd{font-family:var(--latin);font-weight:700;background:var(--bg);border:2px sol
     .forEach(([who, word, ko]) => $("demo").append(makeEntry(who, word, ko, false)));
 
   LEVELS.forEach(([key, name, count]) => {
-    const li = document.createElement("li");
-    const b = document.createElement("button");
-    b.type = "button"; b.className = "level";
+    const li = document.createElement("li"); li.className = "level";
+    const num = document.createElement("span"); num.className = "num"; num.textContent = key;
     const n = document.createElement("span"); n.textContent = name;
     const c = document.createElement("span"); c.className = "count"; c.textContent = `${count}단어`;
-    b.append(n, c);
-    b.addEventListener("click", () => startGame(key));
-    li.append(b); $("levels").append(li);
+    li.append(num, n, c); $("levels").append(li);
   });
 
+  $("pick").addEventListener("submit", ev => {
+    ev.preventDefault();
+    const v = $("level-input").value.trim();
+    if (!LEVELS.some(l => l[0] === v)) {
+      $("start-msg").textContent = "1부터 5 사이의 숫자를 입력해 주세요.";
+      $("level-input").select();
+      return;
+    }
+    startGame(v);
+  });
+
+  $("level-input").focus();
+
   async function startGame(level) {
-    const buttons = document.querySelectorAll(".level");
-    buttons.forEach(b => b.disabled = true);
+    $("level-input").disabled = true; $("pick-go").disabled = true;
     $("start-msg").textContent = "게임을 준비하는 중이에요…";
     try {
       const d = await api("/api/start", { level });
@@ -265,7 +284,7 @@ kbd{font-family:var(--latin);font-weight:700;background:var(--bg);border:2px sol
     } catch (e) {
       $("start-msg").textContent = e.message;
     } finally {
-      buttons.forEach(b => b.disabled = false);
+      $("level-input").disabled = false; $("pick-go").disabled = false;
     }
   }
 
@@ -322,6 +341,7 @@ kbd{font-family:var(--latin);font-weight:700;background:var(--bg);border:2px sol
     awaitingReplay = false;
     $("game").hidden = true; $("start").hidden = false;
     $("start-msg").textContent = "";
+    $("level-input").value = ""; $("level-input").focus();
     window.scrollTo(0, 0);
   }
 
